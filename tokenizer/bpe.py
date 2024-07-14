@@ -81,7 +81,8 @@ class BPE:
         byte_chunks = [list(chunk.encode("utf-8")) for chunk in chunks]
 
         vocab = {value: chr(value) for value in range(256)}
-
+        vocab_size = vocab_size - len(vocab)
+        
         merges = {}
         tot = 0
         for i in range(vocab_size):

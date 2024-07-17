@@ -108,7 +108,7 @@ class BPE:
         list: A list of integers representing the encoded text.
 
         """
-        merges = np.load('merges.npy', allow_pickle=True).item()
+        merges = np.load('./tokenizer/merges.npy', allow_pickle=True).item()
 
         bytes_list = list(sample_text.encode('utf-8'))
 
@@ -136,7 +136,7 @@ class BPE:
         Returns:
         str: The decoded text.
         """
-        vocab = np.load('vocab.npy', allow_pickle=True).item()
+        vocab = np.load('./tokenizer/vocab.npy', allow_pickle=True).item()
 
         decoded = ''.join([vocab[idx] for idx in encoded_text])
         return decoded

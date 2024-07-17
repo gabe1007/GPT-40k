@@ -7,6 +7,9 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
+numpy = "^2.0.0"
+regex = "^2024.5.15"
+torch = "^2.3.1"
 
 
 [build-system]

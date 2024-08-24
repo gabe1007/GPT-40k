@@ -10,8 +10,11 @@ VOCAB_SIZE = 1000
 N_EMBED = 512
 N_HEADS = 8
 DROPOUT = 0.2
-EVAL_ITERS = 200
 N_LAYER = 6
+LEARNING_RATE = 3e-4
+MAX_ITERS = 5000
+EVAL_INTERVAL = 500
+EVAL_ITERS = 200
 
 def convert_to_tensor(text):
     """
@@ -28,7 +31,7 @@ def convert_to_tensor(text):
     data = torch.tensor(encoded_data, dtype=torch.long)
     return data
 
-def split(tensors):
+def data_split(tensors):
     """
     Splits a list of tensors into training and testing sets.
 
@@ -48,7 +51,13 @@ def get_batch(split, block_size=BLOCK_SIZE, batch_size=BATCH_SIZE):
     """
     Get a batch of data for training or testing.
     """
-    data = train if split == 'train' else test
+    with open('./Know_no_fear.txt', 'r', encoding='utf-8') as f:
+        text = f.read()
+    
+    text_ = convert_to_tensor(text[:1000])
+    train, val = data_split(text_)
+    
+    data = train if split == 'train' else val
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x_batch = []
     y_batch = []
@@ -63,6 +72,19 @@ def get_batch(split, block_size=BLOCK_SIZE, batch_size=BATCH_SIZE):
 
     return x, y
     
+@torch.no_grad()
+def estimate_loss():
+    out = {}
+    model.eval()
+    for split in ['train', 'val']:
+        losses = torch.zeros(EVAL_ITERS)
+        for k in range(EVAL_ITERS):
+            X, Y = get_batch(split)
+            logits, loss = model(X, Y)
+            losses[k] = loss.item()
+        out[split] = losses.mean()
+    model.train()
+    return out
 
 class Head(nn.Module):
     """ one head of self-attention """
@@ -188,7 +210,7 @@ class GPTLanguageModel(nn.Module):
         # idx is (B, T) array of indices in the current context
         for _ in range(max_new_tokens):
             # crop idx to the last block_size tokens
-            idx_cond = idx[:, -block_size:]
+            idx_cond = idx[:, -BLOCK_SIZE:]
             # get the predictions
             logits, loss = self(idx_cond)
             # focus only on the last time step
@@ -202,24 +224,35 @@ class GPTLanguageModel(nn.Module):
         return idx
 
 if __name__ == '__main__':
-    with open('./Know_no_fear.txt', 'r', encoding='utf-8') as f:
-        text = f.read()
 
-    text_ = convert_to_tensor(text[:1000])
-    train, test = split(text_)
-    X, y = get_batch('train')
-
-    B, T = X.size()
-    embeding = nn.Embedding(VOCAB_SIZE, N_EMBED)
-    pos_embed = nn.Embedding(BLOCK_SIZE, N_EMBED)
+    model = GPTLanguageModel()
+    m = model.to(DEVICE)
+    # print the number of parameters in the model
+    print(sum(p.numel() for p in m.parameters())/1e6, 'M parameters')
     
-    emb = embeding(X) # B,T,C
-    emb_pos = pos_embed(torch.arange(T, device=DEVICE)) # T,C
+    # create a PyTorch optimizer
+    optimizer = torch.optim.AdamW(model.parameters(), lr = LEARNING_RATE)
 
-    new_emb = emb + emb_pos # B,T,C + T,C
+    for iter in range(MAX_ITERS):
 
-    foo = Block(N_EMBED, N_HEADS)
-    foo.forward(new_emb)
+        # every once in a while evaluate the loss on train and val sets
+        if iter % EVAL_INTERVAL == 0 or iter == MAX_ITERS - 1:
+            losses = estimate_loss()
+            print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+
+        # sample a batch of data
+        xb, yb = get_batch('train')
+
+        # evaluate the loss
+        logits, loss = model(xb, yb)
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
+
+    bpe = BPE()
     
-    
+    # generate from the model
+    context = torch.zeros((1, 1), dtype=torch.long, device = DEVICE)
+    print(bpe.decode(m.generate(context, max_new_tokens=500)[0].tolist()))
+    #open('more.txt', 'w').write(decode(m.generate(context, max_new_tokens=10000)[0].tolist()))
 

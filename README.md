@@ -82,7 +82,7 @@ It is recommended to train the model using the provided notebook for optimal per
 As mentioned before, this was an educational project to better understand how a transformer can create a language model. I did not change the code because i liked the implementation, the MultiHeadAttention could be implemented in just one go just like [minGPT](https://github.com/karpathy/minGPT/tree/master) but i like the implementation done here even though we loose a bit of performance. 
 
 <p align="center">
-  <img src="final.jpg" alt="GPT-40k Logo" width="700" height="300">
+  <img src="final.jpg" alt="GPT-40k Logo" width="500" height="200">
 </p>
 
 

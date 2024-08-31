@@ -1,71 +1,46 @@
 import torch 
 import torch.nn as nn
 import torch.nn.functional as F
-from tokenizer.bpe import BPE
 
-BATCH_SIZE = 16 # how many independent sequences will we process in parallel?
-BLOCK_SIZE = 256 # what is the maximum context length for predictions?
+BATCH_SIZE = 128 
+BLOCK_SIZE = 256 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-VOCAB_SIZE = 1000
-N_EMBED = 512
-N_HEADS = 8
+N_EMBED = 192
+N_HEADS = 3
 DROPOUT = 0.2
-N_LAYER = 6
-LEARNING_RATE = 3e-4
-MAX_ITERS = 5000
+N_LAYER = 4
+LEARNING_RATE = 3e-3
+MAX_ITERS = 10000
 EVAL_INTERVAL = 500
 EVAL_ITERS = 200
 
-def convert_to_tensor(text):
-    """
-    Converts a text to a tensor.
+def save_checkpoint(model, optimizer, filename="model.pth"):
+    checkpoint = {
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+    }
+    torch.save(checkpoint, filename)
 
-    Args:
-        text (str): The text to be converted.
-
-    Returns:
-        torch.Tensor: A tensor representing the text.
-    """
-    bpe = BPE()
-    encoded_data = bpe.encode(text)
-    data = torch.tensor(encoded_data, dtype=torch.long)
-    return data
-
-def data_split(tensors):
-    """
-    Splits a list of tensors into training and testing sets.
-
-    Parameters:
-        tensors (list): A list of tensors to be split.
-
-    Returns:
-        tuple: A tuple containing two lists - the training set and the testing set.
-    """
-    limit = int(0.9 * len(tensors))
-    train = tensors[:limit]
-    test = tensors[limit:]
-
-    return train, test
+def load_checkpoint(model, optimizer, filename="model.pth"):
+    checkpoint = torch.load(filename)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    return model, optimizer
 
 def get_batch(split, block_size=BLOCK_SIZE, batch_size=BATCH_SIZE):
     """
     Get a batch of data for training or testing.
     """
-    with open('./Know_no_fear.txt', 'r', encoding='utf-8') as f:
-        text = f.read()
-    
-    text_ = convert_to_tensor(text[:1000])
-    train, val = data_split(text_)
-    
+
     data = train if split == 'train' else val
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x_batch = []
     y_batch = []
-    
+
     for i in ix:
         x_batch.append(data[i:i+block_size])
         y_batch.append(data[i+1:i+1+block_size])
-    
+
     x = torch.stack(x_batch)
     y = torch.stack(y_batch)
     x, y = x.to(DEVICE), y.to(DEVICE)
@@ -102,7 +77,7 @@ class Head(nn.Module):
         # input of size (B, T, C)
         # output of size (B, T, head_size)
         B,T,C = x.shape
-        #  x = B,T,C = 16, 256, 512,  self.key = 64 x 512, linear performs xAT+b, 
+        #  x = B,T,C = 16, 256, 512,  self.key = 64 x 512, linear performs xAT+b,
         # since nn.Linear inverts the order we have to transpose self.key to get 16 x 256 x 512 @ 512 x 64
         k = self.key(x)
         q = self.query(x) # (B,T,hs)
@@ -115,7 +90,7 @@ class Head(nn.Module):
         v = self.value(x) # (B,T,hs)
         out = wei @ v # (B, T, T) @ (B, T, hs) -> (B, T, hs)
         return out
-    
+
 class MultiHeadAttention(nn.Module):
     """ multiple heads of self-attention in parallel """
 
@@ -129,7 +104,7 @@ class MultiHeadAttention(nn.Module):
         out = torch.cat([h(x) for h in self.heads], dim=-1)
         out = self.dropout(self.proj(out))
         return out
-    
+
 class FeedFoward(nn.Module):
     """ a simple linear layer followed by a non-linearity """
 
@@ -144,7 +119,7 @@ class FeedFoward(nn.Module):
 
     def forward(self, x):
         return self.net(x)
-    
+
 class Block(nn.Module):
     """ Transformer block: communication followed by computation """
 
@@ -158,7 +133,7 @@ class Block(nn.Module):
         self.ln2 = nn.LayerNorm(n_embd)
 
     def forward(self, x):
-        x = x + self.sa(self.ln1(x))      
+        x = x + self.sa(self.ln1(x))
         x = x + self.ffwd(self.ln2(x))
         return x
 
@@ -222,14 +197,34 @@ class GPTLanguageModel(nn.Module):
             # append sampled index to the running sequence
             idx = torch.cat((idx, idx_next), dim=1) # (B, T+1)
         return idx
+    
+
 
 if __name__ == '__main__':
+    with open('./40k.txt', 'r', encoding='utf-8') as f:
+        text = f.read()
+
+    # Unique characters that occur in this text
+    chars = sorted(list(set(text)))
+    VOCAB_SIZE = len(chars)
+
+    # Map the characters
+    stoi = { ch:i for i,ch in enumerate(chars) }
+    itos = { i:ch for i,ch in enumerate(chars) }
+    encode = lambda s: [stoi[c] for c in s]
+    decode = lambda l: ''.join([itos[i] for i in l]) 
+
+    # Get data splits
+    data = torch.tensor(encode(text), dtype=torch.long)
+    n = int(0.9*len(data)) 
+    train = data[:n]
+    val = data[n:]
 
     model = GPTLanguageModel()
     m = model.to(DEVICE)
     # print the number of parameters in the model
     print(sum(p.numel() for p in m.parameters())/1e6, 'M parameters')
-    
+
     # create a PyTorch optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr = LEARNING_RATE)
 
@@ -249,10 +244,5 @@ if __name__ == '__main__':
         loss.backward()
         optimizer.step()
 
-    bpe = BPE()
-    
-    # generate from the model
-    context = torch.zeros((1, 1), dtype=torch.long, device = DEVICE)
-    print(bpe.decode(m.generate(context, max_new_tokens=500)[0].tolist()))
-    #open('more.txt', 'w').write(decode(m.generate(context, max_new_tokens=10000)[0].tolist()))
-
+    # Save the model after the training loop
+    save_checkpoint(model, optimizer, filename="model_40k_50000.pth")

@@ -1,19 +1,22 @@
 [tool.poetry]
-name = "gpt-decoder"
+name = "decoder"
 version = "0.1.0"
 description = ""
 authors = ["Gabriel <gabriel1007@yahoo.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
-numpy = "^2.0.0"
-regex = "^2024.5.15"
-torch = "^2.3.1"
-
-
-[tool.poetry.group.dev.dependencies]
+python = "^3.12"
+torch = {version = "^2.4.1+cpu", source = "pytorch_cpu"}
+torchvision = {version = "^0.19.1+cpu", source = "pytorch_cpu"}
+jupyter = "^1.1.1"
 ipykernel = "^6.29.5"
+
+
+[[tool.poetry.source]]
+name = "pytorch_cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
 
 [build-system]
 requires = ["poetry-core"]
